@@ -55,11 +55,11 @@ def main():
 
     # Open the gripper
     time.sleep(2)
-    node.move_gripper(1)  # Adjust based on your gripper limits
+    node.move_gripper(1.0)  # Adjust based on your gripper limits
 
     # Close the gripper
     time.sleep(2)
-    node.move_gripper(-1)
+    node.move_gripper(-1.0)
 
     rclpy.shutdown()
 
