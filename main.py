@@ -46,7 +46,7 @@ def main():
     node = OpenManipulatorXControl()
 
     # Move arm to a test position
-    time.sleep(1)  # Ensure the publisher has time to initialize
+    time.sleep(1)
     node.move_arm([0.0, -0.5, 0.5, 0.0])  # Example joint positions
     time.sleep(2)
     node.move_arm([0.0, 0.5, -0.5, 0.0])
@@ -55,11 +55,11 @@ def main():
 
     # Open the gripper
     time.sleep(2)
-    node.move_gripper(0.1)  # Adjust based on your gripper limits
+    node.move_gripper(0.5)  # Adjust based on your gripper limits
 
     # Close the gripper
     time.sleep(2)
-    node.move_gripper(-0.01)
+    node.move_gripper(0)
 
     rclpy.shutdown()
 
