@@ -8,49 +8,54 @@ class OpenManipulatorXControl(Node):
     def __init__(self):
         super().__init__('open_manipulator_x_control')
 
-        # Publisher to send joint trajectory commands
-        self.arm_pub = self.create_publisher(JointTrajectory, '/joint_trajectory_controller/joint_trajectory', 10)
-        time.sleep(1)  # Wait for publisher to register
+        # Publish to the arm_controller instead of MoveIt!
+        self.arm_pub = self.create_publisher(JointTrajectory, '/arm_controller/joint_trajectory', 10)
+        self.gripper_pub = self.create_publisher(JointTrajectory, '/gripper_controller/joint_trajectory', 10)
 
-        self.get_logger().info("OpenManipulator-X ready (without MoveIt).")
+        self.get_logger().info("Direct controller control initialized.")
 
-    def move_to_joint_positions(self, positions, duration=2.0):
-        """
-        Moves the arm to the specified joint positions.
-        :param positions: List of joint angles in radians [joint1, joint2, joint3, joint4]
-        :param duration: Time in seconds to reach the position
-        """
-        traj_msg = JointTrajectory()
-        traj_msg.joint_names = [
-            "joint1", "joint2", "joint3", "joint4"
-        ]
+    def move_arm(self, joint_positions, duration=2.0):
+        """ Move the arm to the given joint positions """
+        msg = JointTrajectory()
+        msg.joint_names = ["joint1", "joint2", "joint3", "joint4"]
 
         point = JointTrajectoryPoint()
-        point.positions = positions
+        point.positions = joint_positions
         point.time_from_start.sec = int(duration)
-        point.time_from_start.nanosec = int((duration - int(duration)) * 1e9)
 
-        traj_msg.points.append(point)
+        msg.points.append(point)
+        self.arm_pub.publish(msg)
+        self.get_logger().info(f"Sent arm trajectory: {joint_positions}")
 
-        self.get_logger().info(f"Moving to {positions} over {duration} sec")
-        self.arm_pub.publish(traj_msg)
+    def move_gripper(self, position, duration=1.0):
+        """ Move the gripper """
+        msg = JointTrajectory()
+        msg.joint_names = ["gripper"]
 
-    def go_home(self):
-        """Moves the arm to the 'home' position."""
-        home_position = [0.0, 0.0, 0.0, 0.0]  # Adjust based on actual home pose
-        self.move_to_joint_positions(home_position, duration=2.0)
+        point = JointTrajectoryPoint()
+        point.positions = [position]
+        point.time_from_start.sec = int(duration)
+
+        msg.points.append(point)
+        self.gripper_pub.publish(msg)
+        self.get_logger().info(f"Sent gripper command: {position}")
 
 
 def main():
     rclpy.init()
     node = OpenManipulatorXControl()
 
-    # Move to a predefined position (adjust values based on your needs)
-    target_position = [0.2, -0.5, 0.3, 0.0]  # Example joint angles in radians
-    node.move_to_joint_positions(target_position, duration=3.0)
+    # Move arm to a test position
+    time.sleep(1)  # Ensure the publisher has time to initialize
+    node.move_arm([0.0, -0.5, 0.5, 0.0])  # Example joint positions
 
-    # Move back to home
-    node.go_home()
+    # Open the gripper
+    time.sleep(2)
+    node.move_gripper(0.01)  # Adjust based on your gripper limits
+
+    # Close the gripper
+    time.sleep(2)
+    node.move_gripper(-0.01)
 
     rclpy.shutdown()
 
