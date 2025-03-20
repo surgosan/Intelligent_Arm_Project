@@ -61,7 +61,7 @@ class OpenManipulatorXControl(Node):
 
 
 def main():
-    ### GRIPPER CONTROLS ###
+    ### ARM CONTROLS ###
     # ARM: node.move_arm([
     # X-Axis (Base Joint) <- Left/Right
     # Y-Axis (Base Joint) <- Up/Down -- Do not go past 0.5, or it will slam into the ground if rest is 0
@@ -69,29 +69,36 @@ def main():
     # Y-Axis (Top-Joint)  <- Up/Down
     # ]) <-- Radians
 
+    ### GRIPPER CONTROLS ###
+    # node.move_gripper(
+    # Grip Position,      <- -0.1 to 0.2 --- Higher Value = more open
+    # max_effort=10.0     <- What it sounds like. Max amount of force allowed to protect the system
+    # )
+
 
     rclpy.init()
     node = OpenManipulatorXControl()
 
     # Ensure the gripper is open
-    node.move_gripper(0.01, max_effort=10.0)
+    node.move_gripper(0.02, max_effort=10.0)
     time.sleep(2)
+
+
 
     # Move arm to a test position
     time.sleep(1)
-    node.move_arm([0.0, 0.0, 0.0, 1.0])
+    node.move_arm([0.0, 0.7, 0.0, -0.2])
     time.sleep(2)
-
 
     # Close the gripper
-    node.move_gripper(0.0, max_effort=5.0)
+    node.move_gripper(-0.005, max_effort=20.0)
     time.sleep(2)
 
-    node.move_gripper(0.0, max_effort=10.0)
+    node.move_arm([0.0, 0.2, 0.0, -0.2])
     time.sleep(2)
 
     # Reset to home
-    node.move_arm([0.0, 0.0, 0.0, 0.0])
+    # node.move_arm([0.0, 0.0, 0.0, 0.0])
     rclpy.shutdown()
 
 
