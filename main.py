@@ -3,67 +3,95 @@ from rclpy.node import Node
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 import time
 
+# Import the GripperCommand action and ActionClient support
+from control_msgs.action import GripperCommand
+from rclpy.action import ActionClient
+
 
 class OpenManipulatorXControl(Node):
     def __init__(self):
         super().__init__('open_manipulator_x_control')
 
-        # Publish to the arm_controller instead of MoveIt!
+        # Arm controller remains unchanged
         self.arm_pub = self.create_publisher(JointTrajectory, '/arm_controller/joint_trajectory', 10)
-        self.gripper_pub = self.create_publisher(JointTrajectory, '/gripper_controller/joint_trajectory', 10)
+
+        # Replace the gripper publisher with an action client on the proper topic
+        self.gripper_action_client = ActionClient(self, GripperCommand, '/gripper_controller/gripper_cmd')
 
         self.get_logger().info("Direct controller control initialized.")
 
     def move_arm(self, joint_positions, duration=2.0):
-        """ Move the arm to the given joint positions """
+        """Move the arm to the given joint positions."""
         msg = JointTrajectory()
         msg.joint_names = ["joint1", "joint2", "joint3", "joint4"]
 
         point = JointTrajectoryPoint()
         point.positions = joint_positions
         point.time_from_start.sec = int(duration)
-
         msg.points.append(point)
+
         self.arm_pub.publish(msg)
         self.get_logger().info(f"Sent arm trajectory: {joint_positions}")
 
-    def move_gripper(self, position, duration=1.0):
-        """ Move the gripper """
-        msg = JointTrajectory()
-        msg.joint_names = ["gripper"]
+    def move_gripper(self, position, max_effort=10.0):
+        """Move the gripper using the GripperActionController via its action interface."""
+        goal_msg = GripperCommand.Goal()
+        goal_msg.command.position = position
+        goal_msg.command.max_effort = max_effort
 
-        point = JointTrajectoryPoint()
-        point.positions = [position]
-        point.time_from_start.sec = int(duration)
+        self.get_logger().info("Waiting for gripper action server...")
+        if not self.gripper_action_client.wait_for_server(timeout_sec=5.0):
+            self.get_logger().error("Gripper action server not available!")
+            return
 
-        msg.points.append(point)
-        self.gripper_pub.publish(msg)
-        self.get_logger().info(f"Sent gripper command: {position}")
+        self.get_logger().info(f"Sending gripper command: position {position}, max_effort {max_effort}")
+        send_goal_future = self.gripper_action_client.send_goal_async(goal_msg)
+        rclpy.spin_until_future_complete(self, send_goal_future)
+        goal_handle = send_goal_future.result()
+
+        if not goal_handle.accepted:
+            self.get_logger().error("Gripper command rejected!")
+            return
+
+        self.get_logger().info("Gripper command accepted, waiting for result...")
+        result_future = goal_handle.get_result_async()
+        rclpy.spin_until_future_complete(self, result_future)
+        result = result_future.result().result
+        self.get_logger().info(f"Gripper action result: {result}")
 
 
 def main():
+    ### GRIPPER CONTROLS ###
+    # ARM: node.move_arm([
+    # X-Axis (Base Joint) <- Left/Right
+    # Y-Axis (Base Joint) <- Up/Down -- Do not go past 0.5, or it will slam into the ground if rest is 0
+    # Y-Axis (Mid-Joint)  <- Up/Down -- Do not go past 0.8 or the arm will bend at wrist
+    # Y-Axis (Top-Joint)  <- Up/Down
+    # ]) <-- Radians
+
+
     rclpy.init()
     node = OpenManipulatorXControl()
 
+    # Ensure the gripper is open
+    node.move_gripper(0.01, max_effort=10.0)
+    time.sleep(2)
+
     # Move arm to a test position
     time.sleep(1)
-    node.move_arm([0.0, -0.5, 0.5, 0.0])  # Example joint positions
+    node.move_arm([0.0, 0.0, 0.0, 1.0])
     time.sleep(2)
-    node.move_arm([0.0, 0.5, -0.5, 0.0])
-    time.sleep(2)
-    node.move_arm([0.5, 0.0, 0.0, 0.5])
 
-    # Open the gripper
-    time.sleep(2)
-    node.move_gripper(0.1)  # Adjust based on your gripper limits
 
     # Close the gripper
+    node.move_gripper(0.0, max_effort=5.0)
     time.sleep(2)
-    node.move_gripper(-0.1)
 
+    node.move_gripper(0.0, max_effort=10.0)
     time.sleep(2)
-    node.move_arm([0.5, 0.0, 0.0, 0.0])
 
+    # Reset to home
+    node.move_arm([0.0, 0.0, 0.0, 0.0])
     rclpy.shutdown()
 
 

@@ -1,0 +1,62 @@
+<?xml version="1.0" ?>
+<sdf version="1.6">
+  <model name="block">
+    <static>false</static>
+    <link name="link">
+      <!-- Inertial properties -->
+      <inertial>
+        <mass>0.5</mass>
+        <inertia>
+          <ixx>0.005</ixx>
+          <ixy>0.0</ixy>
+          <ixz>0.0</ixz>
+          <iyy>0.005</iyy>
+          <iyz>0.0</iyz>
+          <izz>0.005</izz>
+        </inertia>
+      </inertial>
+
+      <!-- Velocity decay helps dampen motion quickly -->
+      <velocity_decay>
+        <linear>0.8</linear>
+        <angular>0.8</angular>
+      </velocity_decay>
+
+      <!-- Collision properties with friction and contact parameters -->
+      <collision name="collision">
+        <geometry>
+          <box>
+            <size>0.2 0.2 0.2</size>
+          </box>
+        </geometry>
+        <surface>
+          <friction>
+            <ode>
+              <mu>0.5</mu>
+              <mu2>0.5</mu2>
+            </ode>
+          </friction>
+          <contact>
+            <ode>
+              <soft_cfm>0.0</soft_cfm>
+              <soft_erp>0.8</soft_erp>
+            </ode>
+          </contact>
+        </surface>
+      </collision>
+
+      <!-- Visual representation -->
+      <visual name="visual">
+        <geometry>
+          <box>
+            <size>0.2 0.2 0.2</size>
+          </box>
+        </geometry>
+        <material>
+          <ambient>1 0 0 1</ambient>
+          <diffuse>1 0 0 1</diffuse>
+        </material>
+      </visual>
+    </link>
+  </model>
+</sdf>
