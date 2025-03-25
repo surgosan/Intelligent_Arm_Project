@@ -91,7 +91,7 @@ def main():
     time.sleep(2)
 
     # Close the gripper
-    node.move_gripper(-0.005, max_effort=20.0)
+    node.move_gripper(-0.002, max_effort=20.0)
     time.sleep(2)
 
     node.move_arm([0.0, 0.2, 0.0, -0.2])
