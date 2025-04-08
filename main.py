@@ -1,4 +1,5 @@
 import rclpy
+from mercurial import node
 from rclpy.node import Node
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 import time
@@ -61,6 +62,9 @@ class OpenManipulatorXControl(Node):
 
 
 def main():
+    rclpy.init()
+    node = OpenManipulatorXControl()
+
     ### ARM CONTROLS ###
     # ARM: node.move_arm([
     # X-Axis (Base Joint) <- Left/Right
@@ -72,30 +76,69 @@ def main():
     ### GRIPPER CONTROLS ###
     # node.move_gripper(
     # Grip Position,      <- -0.1 to 0.2 --- Higher Value = more open
-    # max_effort=10.0     <- What it sounds like. Max amount of force allowed to protect the system
+    # max_effort=2.0     <- What it sounds like. Max amount of force allowed to protect the system
     # )
 
-
-    rclpy.init()
-    node = OpenManipulatorXControl()
-
-    # Ensure the gripper is open
-    node.move_gripper(0.02, max_effort=10.0)
-    time.sleep(2)
-
-
-
-    # Move arm to a test position
+    # Move arm up to starting position
+    # node.move_gripper(0.1, max_effort=0.1)
+    node.move_arm([0.0, 0.0, -2.0, 0.0])
     time.sleep(1)
-    node.move_arm([0.0, 0.7, 0.0, -0.2])
-    time.sleep(2)
+
+    # Turn Left 90 degrees
+    node.move_arm([2.0, 0.0, -2.0, 0.0])
+    time.sleep(1)
+
+    # Lean forward
+    node.move_arm([2.0, 1.0, -2.0, 0.0])
+    time.sleep(1)
+
+    # Lean backward
+    node.move_arm([2.0, -1.0, -2.0, 0.0])
+    time.sleep(1)
 
     # Close the gripper
-    node.move_gripper(-0.002, max_effort=20.0)
+    # node.move_gripper(0.0, max_effort=0.1)
     time.sleep(2)
 
+    # Straight up & open gripper
+    node.move_arm([0.0, 0.0, -2.0, 0.0])
+    # node.move_gripper(0.1, max_effort=0.1)
+    time.sleep(1)
+
+    # Forward lean. Low to ground and parallel
+    node.move_arm([0.0, 1.0, 0.0, -1.0])
+    time.sleep(4)
+
+    # Close gripper
+    # node.move_gripper(0.0, max_effort=0.1)
+    time.sleep(4)
+
+    # Raise up
     node.move_arm([0.0, 0.2, 0.0, -0.2])
+    time.sleep(1)
+
+    # Turn Right 90 degrees
+    node.move_arm([-2.0, 0.2, 0.0, -0.2])
+    time.sleep(1)
+
+    # Go down from there
+    node.move_arm([-2.0, 1.0, 0.0, -1.0])
+    time.sleep(4)
+
+    # Open gripper
+    # node.move_gripper(0.1, max_effort=0.1)
     time.sleep(2)
+
+    # Move back up
+    node.move_arm([-2.0, 0.2, 0.0, -0.2])
+    time.sleep(1)
+
+    # Go to sleep position
+    node.move_arm([0.0, 0.45, -0.1, 1.15])
+    time.sleep(1)
+
+
+
 
     # Reset to home
     # node.move_arm([0.0, 0.0, 0.0, 0.0])
