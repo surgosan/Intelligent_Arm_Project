@@ -1,43 +1,73 @@
 import math
 import numpy as np
+import time
 
+# Ros related imports
 import rclpy
 from mercurial import node
 from rclpy.node import Node
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
-import time
-
-# Import the GripperCommand action and ActionClient support
 from control_msgs.action import GripperCommand
 from rclpy.action import ActionClient
 
+### DEFINES (Meters) ###
+# base_offset = 0.007 # Not used. We don't want to go under the base for safety.
+base_length = 0.128
+elbow_offset = 0.024
+elbow_length = 0.124
 
-import math
 
-def find_xyz_coordinates(joint_angles_deg):
-    # Convert to radians
-    j1 = math.radians(joint_angles_deg[0]) # Bottom Joint
-    j2 = math.radians(joint_angles_deg[1]) # Middle Joint
-    j3 = math.radians(joint_angles_deg[2]) # Upper  Joint
+def map_range_clamped(value, in_min, in_max, out_min, out_max):
+    """ Clamp input value to the given range """
+    value = max(min(value, in_max), in_min)
+    return (value - in_min) * (out_max - out_min) / (in_max - in_min) + out_min
 
-    # Link lengths (in meters)
-    d1 = 0.077  # Base height
-    a2 = 0.130  # Shoulder to elbow
-    a3 = 0.124  # Elbow to wrist
+def kinemator(joint_angles_deg):
+    """ Get the x,y position of the arm joints """
+    ### Absolute Limitations as Radian Inputs to Degrees Equivalent ###
+    # 11: (-3.14 to 3.14) => -180 degrees to 180 degrees (Base Rotation)
+    # 12: (-1.57 to 1.57) =>  -90 degrees to  90 degrees (Base Tilt)
+    # 13: (-1.57 to 1.00) =>  -90 degrees to  60 degrees (Elbow Tilt - Rotated 90 deg to right)
+    # 14: (-1.57 to 1.57) =>  -90 degrees to  90 degrees (Wrist Tilt - Inline with Elbow Joint)
 
-    # Accumulated joint angles
-    j23 = j2 + j3
+    # ---------------------- Correct degrees based on joint perspective && clamp to limits ----------------------
+    joint_angles_deg[0] = map_range_clamped(joint_angles_deg[0], -180, 180, -180, 180) # Reverse if needed
+    joint_angles_deg[1] = map_range_clamped(joint_angles_deg[1], 0, 180, -90, 90) + 90
+    joint_angles_deg[2] = map_range_clamped(joint_angles_deg[2], -90, 60, 90, -60.0)
+    joint_angles_deg[3] = map_range_clamped(joint_angles_deg[3], -180, 180, -180, 180)
 
-    # Planar Y-Z projection (up to joint 4 base)
-    z = d1 + a2 * math.sin(j2) + a3 * math.sin(j23)
-    y =      a2 * math.cos(j2) + a3 * math.cos(j23)
+    print(f"\nUpdated Angles DEG: {joint_angles_deg[0]}, {joint_angles_deg[1]}, {joint_angles_deg[2]}, {joint_angles_deg[3]}")
 
-    # Rotate to 3D with base rotation
-    x = y * math.sin(j1)
-    y = y * math.cos(j1)
+    # Convert Degrees to Radians
+    joint_angles_deg[0] = round(math.radians(joint_angles_deg[0]), 3)
+    joint_angles_deg[1] = round(math.radians(joint_angles_deg[1] - 90), 3)
+    joint_angles_deg[2] = round(math.radians(joint_angles_deg[2]), 3)
+    joint_angles_deg[3] = round(math.radians(joint_angles_deg[3]), 3)
 
-    print(f"JOINT 4 POSITION: x={x:.3f}, y={y:.3f}, z={z:.3f}")
-    return x, y, z
+    print(f"Updated Angles RAD: {joint_angles_deg[0]}, {joint_angles_deg[1]}, {joint_angles_deg[2]}, {joint_angles_deg[3]}")
+
+    # --------------------------------- Calculate (x,y) position for each joint) ---------------------------------
+    # 11 & 12 are static. The angles are used to calculate the position of the NEXT joint
+    print(f"\nBase Rotation: {joint_angles_deg[0]}")
+
+    elbow_x = round(base_length * math.cos(joint_angles_deg[1]), 3)
+    elbow_y = round(base_length * math.sin(joint_angles_deg[1]), 3) * -1
+
+    print(f"Elbow Position: {elbow_x}, {elbow_y}")
+
+    wrist_x = round(elbow_length * math.cos(joint_angles_deg[2]) + elbow_x, 3)
+    wrist_y = round(elbow_length * math.sin(joint_angles_deg[2]) + elbow_y, 3)
+
+    print(f"Wrist Position: {wrist_x}, {wrist_y}")
+
+    node.send_arm_cmd([
+        joint_angles_deg[0],
+        joint_angles_deg[1],
+        joint_angles_deg[2],
+        joint_angles_deg[3]
+    ])
+
+
 
 
 def forward_kinematics_dh(joint_angles_deg):
@@ -73,54 +103,6 @@ def forward_kinematics_dh(joint_angles_deg):
 
     print(f"END-EFFECTOR POSITION (x, y, z): {position[0]:.3f}, {position[1]:.3f}, {position[2]:.3f}")
     return position
-
-
-def inverse_kinematics_dh(px, py, pz):
-    # Constants
-    θ0 = math.radians(11)
-    d1 = 0.077
-    a2 = 0.130
-    a3 = 0.135
-    a4 = 0.126
-
-    # Step 1: θ1 from x-y projection
-    θ1 = math.atan2(py, px)
-
-    # Step 2: r and z projection
-    pr = math.sqrt(px**2 + py**2)
-    r3 = pr
-    z3 = pz - d1
-
-    # Try ϕ = θ2 + θ3 + θ4 = 0 (assumption; can be parameterized)
-    φ = 0.0
-    r2 = r3 - a4 * math.cos(φ)
-    z2 = z3 - a4 * math.sin(φ)
-
-    # Step 3: θ3
-    cosθ3 = (r2**2 + z2**2 - a2**2 - a3**2) / (2 * a2 * a3)
-    if abs(cosθ3) > 1:
-        print("Target out of reach.")
-        return None
-
-    θ3 = -math.acos(cosθ3)  # elbow-down
-    sinθ3 = math.sin(θ3)
-
-    # Step 4: θ2
-    cosθ2 = ((a2 + a3 * math.cos(θ3)) * r2 + a3 * sinθ3 * z2) / (r2**2 + z2**2)
-    sinθ2 = ((a2 + a3 * math.cos(θ3)) * z2 - a3 * sinθ3 * r2) / (r2**2 + z2**2)
-    θ2 = math.atan2(sinθ2, cosθ2)
-
-    # Step 5: θ4 from φ = θ2 + θ3 + θ4 → θ4 = φ - θ2 - θ3
-    θ4 = φ - θ2 - θ3
-
-    # Apply offset corrections
-    θ2_corrected = math.degrees(θ2 + θ0)
-    θ3_corrected = math.degrees(θ3 - θ0)
-    θ1_deg = math.degrees(θ1)
-    θ4_deg = math.degrees(θ4)
-
-    print(f"JOINT ANGLES (deg): θ1={θ1_deg:.2f}, θ2={θ2_corrected:.2f}, θ3={θ3_corrected:.2f}, θ4={θ4_deg:.2f}")
-    return [θ1_deg, θ2_corrected, θ3_corrected, θ4_deg]
 
 
 class OpenManipulatorXControl(Node):
@@ -167,37 +149,6 @@ class OpenManipulatorXControl(Node):
         # 12: (-1.57 to 1.57) =>  -90 degrees to  90 degrees
         # 13: (-1.57 to 1.00) =>  -90 degrees to  57 degrees
         # 14: (-1.57 to 1.57) =>  -90 degrees to  90 degrees
-
-        # Set to lower limit if user wants to go past
-        if joint_degrees[0] < -180:
-            print("Cannot rotate less than -180 degrees")
-            joint_degrees[0] = -180
-
-        # Set to upper limit if user wants to go past
-        if joint_degrees[0] > 180:
-            print("Cannot rotate more than 180 degrees")
-            joint_degrees[0] = 180
-
-        #  Iterate over joints 2,3,4 and set to min if user wants a lower value
-        for index, angle in enumerate(joint_degrees):
-            if index == 0: continue # Joint 0 (11) has a range of -180 to 180 degrees
-            if angle < -90:
-                print(f"Cannot rotate joint {index+1} less than -90 degrees")
-                joint_degrees[index] = -90
-
-        #  Iterate over joints 1,2,4 and set to max if user wants a higher value
-        for index, angle in enumerate(joint_degrees):
-            if index == 0: continue
-            if index == 2: # Handle joint 3 max
-                if angle > 57:
-                    print(f"Cannot rotate joint 3 more than 57 degrees")
-                    joint_degrees[index] = 57
-                    continue
-
-            if angle > 90: # Handle joints 2,4 max
-                print(f"Cannot rotate joint {index+1} more than 90 degrees")
-                joint_degrees[index] = 90
-
 
         ### ----------------------------- Check combination limitations ----------------------------- ###
         # 12 >= 0.60  &&  13 >= 0.00  |  34.30 degrees  &&  00.00 degrees
@@ -287,16 +238,12 @@ def main(args=None):
     print(" Straight Up")
     current_move = [0, 0, -90, 0]
     node.process_arm_movement(current_move)
-    forward_kinematics_dh(current_move)
-    inverse_kinematics_dh(0.128, -0.000, -0.209)
     time.sleep(5)
     print("\n\n")
 
     print("Low Forward")
     current_move = [0, 90, -90, 0]
     node.process_arm_movement(current_move)
-    forward_kinematics_dh(current_move)
-    inverse_kinematics_dh(0.286, 0.000, 0.205)
     time.sleep(5)
     print("\n\n")
 
