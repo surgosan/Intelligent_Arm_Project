@@ -68,8 +68,6 @@ def kinemator(joint_angles_deg):
     ])
 
 
-
-
 def forward_kinematics_dh(joint_angles_deg):
     # Extract joint angles and convert to radians
     θ0 = math.radians(11)  # offset angle
@@ -110,8 +108,15 @@ class OpenManipulatorXControl(Node):
         super().__init__('open_manipulator_x_control')
         self.arm_pub = self.create_publisher(JointTrajectory, '/arm_controller/joint_trajectory', 10)
         # self.gripper_action_client = ActionClient(self, GripperCommand, '/gripper_controller/gripper_cmd')
+        self.current_joint_radians = [0.0, 0.0, 0.0, 0.0]
 
         self.get_logger().info("Robot joins initialized")
+
+    def compute_duration(self, target_radians):
+        """Compute movement duration based on joint travel distance."""
+        total_delta = sum(abs(a - b) for a, b in zip(self.current_joint_radians, target_radians))
+        base_speed = 2.0  # default speed for average distance
+        return max(1.0, min(5.0, base_speed * total_delta / math.pi))  # Clamp between 1s and 5s
 
     def send_arm_cmd(self, joint_radians, duration):
         robot_control = JointTrajectory()
@@ -123,6 +128,7 @@ class OpenManipulatorXControl(Node):
         robot_control.points.append(point)
 
         self.arm_pub.publish(robot_control)
+        self.current_joint_radians = joint_radians.copy() # Store new state
         self.get_logger().info(f"Sent arm trajectory: {joint_radians}")
 
     def process_arm_movement(self, joint_degrees):
@@ -149,114 +155,55 @@ class OpenManipulatorXControl(Node):
         # 12: (-1.57 to 1.57) =>  -90 degrees to  90 degrees
         # 13: (-1.57 to 1.00) =>  -90 degrees to  57 degrees
         # 14: (-1.57 to 1.57) =>  -90 degrees to  90 degrees
-
         ### ----------------------------- Check combination limitations ----------------------------- ###
         # 12 >= 0.60  &&  13 >= 0.00  |  34.30 degrees  &&  00.00 degrees
         # 12 >= 0.35  &&  13 >= 0.00  &&  14 > 0.00   |  20.05 degrees  &&  00.00 degrees  && 00.00 degrees
         # 12 >= 0.00  &&  13 >= 0.80  |  00.00 degrees  &&  45.83 degrees
         # 12 >= 0.00  &&  13 >= 0.50  &&  14 > 0.60   |  00.00 degrees  &&  45.83 degrees  &&  34.30
         # 13 >= -1.0  &&  13 >= 1.20  |  -57.29 degrees  &&  68.75 degrees
-            # If 14 >= 0.5 do as well  |  28.60 degrees
+        # If 14 >= 0.5 do as well  |  28.60 degrees
 
-        # # Prevent forward ground slam TODO
-        # if joint_degrees[1] >= 34.30 < joint_degrees[1] - joint_degrees[2]:
-        #     print("Preventing Forward Ground Slam")
-        #     joint_degrees[1] = joint_degrees[1] - (joint_degrees[1] - 34.30)
-        #
-        # # if (joint_degrees[1] >= 34.30 and joint_degrees[2] <= 00.00
-        # #         and joint_degrees[1] - joint_degrees[2] > 34.30):
-        # #     print("Preventing Forward Ground Slam II")
-        # #     joint_degrees[2] = joint_degrees[2] - (joint_degrees[1] - 34.3)
-        #
-        # # Prevent forward leaning wrist slam. May overwrite "Prevent forward ground slam" to allow wrist movement
-        # if joint_degrees[1] >= 15.00 and joint_degrees[3] > 00.00:
-        #     print("Preventing Forward Leaning Wrist Slam")
-        #     joint_degrees[1] = 20.05
-        #     joint_degrees[2] = 00.00
-        #
-        # # # Prevent forward hip folding into ground
-        # # if joint_degrees[1] >= 0.00 and joint_degrees[2] >= 45.83:
-        # #     print("Preventing Forward Hip Folding")
-        # #     joint_degrees[1] = 0.00
-        # #     joint_degrees[2] = 45.83
-        #
-        # # Preventing Forward Hip Folding Wrist Slam
-        # if joint_degrees[1] >= 0.00 and joint_degrees[2] >= 45.83 and joint_degrees[3] >= 34.30:
-        #     print("Preventing Forward Hip Folding Wrist Slam")
-        #     joint_degrees[1] = 0.00
-        #     joint_degrees[2] = 45.83
-        #     joint_degrees[3] = 34.30
-        #
-        # # Prevent curling into self
-        # if joint_degrees[1] <= -57.29 and joint_degrees[2] >= 68.75:
-        #     print("Preventing Curling Into Self")
-        #     joint_degrees[1] = -57.29
-        #     joint_degrees[2] = 68.75
-        #
-        #     if joint_degrees[3] >= 0.5: # If arm is also tilted forward. Set max
-        #         joint_degrees[3] = 0.5
+        # Clamp to absolute limits
+        joint_degrees[0] = max(min(joint_degrees[0], 180), -180)
+        joint_degrees[1] = max(min(joint_degrees[1], 90), -90)
+        joint_degrees[2] = max(min(joint_degrees[2], 57), -90)
+        joint_degrees[3] = max(min(joint_degrees[3], 90), -90)
 
         ### ----------------------------- Convert Degrees to Radians ----------------------------- ###
-        joint_radians = [0.0] * 4
-        for index, angle in enumerate(joint_degrees):
-            radians = (angle * math.pi) / 180
-            radians = round(radians, 3)
-            joint_radians[index] = radians
+        target_radians = [round(math.radians(d), 3) for d in joint_degrees]
+        duration = round(self.compute_duration(target_radians), 2)
 
-        # print(f"---------------------  Sending Degrees: {joint_degrees}")
-        # print(f"---------------------  Sending Radians: {joint_radians}")
-        self.send_arm_cmd(joint_radians, 2.0) # Make duration dynamic
+        print(f"---------------------  Sending Degrees: {joint_degrees} over {duration} second(s)")
+        # print(f"---------------------  Sending Radians: {joint_radians} over {duration} second(s)")
+        self.send_arm_cmd(target_radians, duration) # Make duration dynamic
+        print(f"Sleeping for {duration + 1}s")
+        time.sleep(duration + 1)
 
 
 def main(args=None):
+    rclpy.init(args=args)
+    node = OpenManipulatorXControl()
 
     def to_home():
         node.process_arm_movement([0, 0, 0, 0])
 
-    rclpy.init(args=args)
-    node = OpenManipulatorXControl()
+    # Need to start 1 movement first before actually moving
+    print("To Home")
+    to_home()
+    print("\n\n")
+
+    print("Movement 1")
+    node.process_arm_movement([0, 90, -90, 0])
+    print("\n\n")
+
+    print("Movement 2")
+    current_move = [0, -90, 0, 0]
+    node.process_arm_movement(current_move)
+    print("\n\n")
 
     print("To Home")
     to_home()
     print("\n\n")
-    # find_xyz_coordinates([0,0,0,0])
-    # find_robot_joint_angles(0.0,0.38,0.077, 0)
-    time.sleep(2)
-
-    ### -------------- Absolute Limitations as Radian Inputs to Degrees Equivalent -------------- ###
-    # 11: (-3.14 to 3.14) => -180 degrees to 180 degrees
-    # 12: (-1.57 to 1.57) =>  -90 degrees to  90 degrees
-    # 13: (-1.57 to 1.00) =>  -90 degrees to  57 degrees
-    # 14: (-1.57 to 1.57) =>  -90 degrees to  90 degrees
-    ### ----------------------------- Check combination limitations ----------------------------- ###
-    # 12 >= 0.60  &&  13 >= 0.00  |  34.30 degrees  &&  00.00 degrees
-    # 12 >= 0.35  &&  13 >= 0.00  &&  14 > 0.00   |  20.05 degrees  &&  00.00 degrees  && 00.00 degrees
-    # 12 >= 0.00  &&  13 >= 0.80  |  00.00 degrees  &&  45.83 degrees
-    # 12 >= 0.00  &&  13 >= 0.50  &&  14 > 0.60   |  00.00 degrees  &&  45.83 degrees  &&  34.30
-    # 13 >= -1.0  &&  13 >= 1.20  |  -57.29 degrees  &&  68.75 degrees
-    # If 14 >= 0.5 do as well  |  28.60 degrees
-    print(" Straight Up")
-    current_move = [0, 0, -90, 0]
-    node.process_arm_movement(current_move)
-    time.sleep(5)
-    print("\n\n")
-
-    print("Low Forward")
-    current_move = [0, 90, -90, 0]
-    node.process_arm_movement(current_move)
-    time.sleep(5)
-    print("\n\n")
-
-    print("To Home")
-    to_home()
-    # find_robot_joint_angles(0.0,0.38,0.077, 0)
-    forward_kinematics_dh([0,0,0,0])
-    print("\n\n")
-
-
-
-    print("\n")
-
 
 if __name__ == '__main__':
     main()

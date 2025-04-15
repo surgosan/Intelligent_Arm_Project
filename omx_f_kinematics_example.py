@@ -64,8 +64,7 @@ def kinemator(joint_angles_deg):
     # --------------------------------- Updated Angles Relative to other joints ---------------------------------
     # 11 stays the same
     # 12 stays the same (natural POV)
-
-
+    joint_angles_deg[2]
 
     # --------------------------------- Calculate (x,y) position for each joint) ---------------------------------
     # 11 & 12 are static. The angles are used to calculate the position of the NEXT joint
@@ -94,7 +93,7 @@ if __name__ == "__main__":
     # print(map_range_clamped(0, -90, 60, 90, -60))
     # print(map_range_clamped(0, -90, 90, 180, 0))
 
-    kinemator([0, 180, 90, 0])
+    kinemator([0, 0, 90, 0])
 
     # x2, y2 = get_next_location(Joint.ankle, 45, 0, 0)
     # x3, y3 = get_next_location(Joint.hip, 60, x2, y2)
