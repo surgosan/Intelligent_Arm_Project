@@ -1,6 +1,7 @@
 import math
 import numpy as np
 import time
+from multiprocessing.connection import Listener
 
 # Ros related imports
 import rclpy
@@ -116,7 +117,7 @@ class OpenManipulatorXControl(Node):
         """Compute movement duration based on joint travel distance."""
         total_delta = sum(abs(a - b) for a, b in zip(self.current_joint_radians, target_radians))
         base_speed = 2.0  # default speed for average distance
-        return max(1.0, min(5.0, base_speed * total_delta / math.pi))  # Clamp between 1s and 5s
+        return max(2.0, min(5.0, base_speed * total_delta / math.pi))  # Clamp between 2s and 5s
 
     def send_arm_cmd(self, joint_radians, duration):
         robot_control = JointTrajectory()
@@ -184,26 +185,37 @@ def main(args=None):
     rclpy.init(args=args)
     node = OpenManipulatorXControl()
 
-    def to_home():
-        node.process_arm_movement([0, 0, 0, 0])
+    # Setup a local listener
+    address = ('localhost', 6000)  # Port can be changed
+    listener = Listener(address, authkey=b'secret')  # authkey must match client
 
-    # Need to start 1 movement first before actually moving
-    print("To Home")
-    to_home()
-    print("\n\n")
+    node.get_logger().info("Listening for joint commands on port 6000...")
 
-    print("Movement 1")
-    node.process_arm_movement([0, 90, -90, 0])
-    print("\n\n")
+    try:
+        while rclpy.ok():
+            conn = listener.accept()
+            node.get_logger().info("Client connected.")
 
-    print("Movement 2")
-    current_move = [0, -90, 0, 0]
-    node.process_arm_movement(current_move)
-    print("\n\n")
-
-    print("To Home")
-    to_home()
-    print("\n\n")
+            try:
+                data = conn.recv()
+                if isinstance(data, list) and len(data) == 4:
+                    node.get_logger().info(f"Received joint move request: {data}")
+                    node.process_arm_movement(data)
+                    conn.send("OK")
+                else:
+                    conn.send("Invalid data. Expected list of 4 values.")
+            except Exception as e:
+                conn.send(f"Error: {e}")
+            finally:
+                conn.close()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        print("Going Home. Goodbye.")
+        node.process_arm_movement([0,0,0,0])
+        print("\n\n")
+        node.destroy_node()
+        rclpy.shutdown()
 
 if __name__ == '__main__':
     main()
