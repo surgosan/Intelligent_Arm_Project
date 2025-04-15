@@ -38,19 +38,20 @@ def map_range_clamped(value, in_min, in_max, out_min, out_max):
 
 def kinemator(joint_angles_deg):
     """ Get the x,y position of the arm joints """
+    print(f"\nInput Angles DEG: {joint_angles_deg[0]}, {joint_angles_deg[1]}, {joint_angles_deg[2]}, {joint_angles_deg[3]}")
     ### Absolute Limitations as Radian Inputs to Degrees Equivalent ###
     # 11: (-3.14 to 3.14) => -180 degrees to 180 degrees (Base Rotation)
     # 12: (-1.57 to 1.57) =>  -90 degrees to  90 degrees (Base Tilt)
     # 13: (-1.57 to 1.00) =>  -90 degrees to  60 degrees (Elbow Tilt - Rotated 90 deg to right)
     # 14: (-1.57 to 1.57) =>  -90 degrees to  90 degrees (Wrist Tilt - Inline with Elbow Joint)
 
-    # ---------------------- Correct degrees based on joint perspective && clamp to limits ----------------------
+    # ---------------------- Clamp degrees to joint limits && Find degrees in natural POV for ROS ----------------------
     joint_angles_deg[0] = map_range_clamped(joint_angles_deg[0], -180, 180, -180, 180) # Reverse if needed
-    joint_angles_deg[1] = map_range_clamped(joint_angles_deg[1], 0, 180, -90, 90) + 90
-    joint_angles_deg[2] = map_range_clamped(joint_angles_deg[2], -90, 60, 90, -60.0)
-    joint_angles_deg[3] = map_range_clamped(joint_angles_deg[3], -180, 180, -180, 180)
+    joint_angles_deg[1] = map_range_clamped(joint_angles_deg[1], 0, 180, 90, -90)
+    joint_angles_deg[2] = map_range_clamped(joint_angles_deg[2], 60, 180, 40, -90)
+    joint_angles_deg[3] = map_range_clamped(joint_angles_deg[3], -90, 90, -90, 90)
 
-    print(f"\nUpdated Angles DEG: {joint_angles_deg[0]}, {joint_angles_deg[1]}, {joint_angles_deg[2]}, {joint_angles_deg[3]}")
+    print(f"Natural Angles DEG: {joint_angles_deg[0]}, {joint_angles_deg[1]}, {joint_angles_deg[2]}, {joint_angles_deg[3]}")
 
     # Convert Degrees to Radians
     joint_angles_deg[0] = round(math.radians(joint_angles_deg[0]), 3)
@@ -58,7 +59,13 @@ def kinemator(joint_angles_deg):
     joint_angles_deg[2] = round(math.radians(joint_angles_deg[2]), 3)
     joint_angles_deg[3] = round(math.radians(joint_angles_deg[3]), 3)
 
-    print(f"Updated Angles RAD: {joint_angles_deg[0]}, {joint_angles_deg[1]}, {joint_angles_deg[2]}, {joint_angles_deg[3]}")
+    print(f"Natural Angles RAD: {joint_angles_deg[0]}, {joint_angles_deg[1]}, {joint_angles_deg[2]}, {joint_angles_deg[3]}")
+
+    # --------------------------------- Updated Angles Relative to other joints ---------------------------------
+    # 11 stays the same
+    # 12 stays the same (natural POV)
+
+
 
     # --------------------------------- Calculate (x,y) position for each joint) ---------------------------------
     # 11 & 12 are static. The angles are used to calculate the position of the NEXT joint
@@ -87,7 +94,7 @@ if __name__ == "__main__":
     # print(map_range_clamped(0, -90, 60, 90, -60))
     # print(map_range_clamped(0, -90, 90, 180, 0))
 
-    kinemator([0, 90, 0, 0])
+    kinemator([0, 180, 90, 0])
 
     # x2, y2 = get_next_location(Joint.ankle, 45, 0, 0)
     # x3, y3 = get_next_location(Joint.hip, 60, x2, y2)
