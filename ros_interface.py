@@ -2,6 +2,7 @@ import math
 import numpy as np
 import time
 from multiprocessing.connection import Listener
+import signal
 
 # Ros related imports
 import rclpy
@@ -185,14 +186,30 @@ def main(args=None):
     rclpy.init(args=args)
     node = OpenManipulatorXControl()
 
-    # Setup a local listener
-    address = ('localhost', 6000)  # Port can be changed
-    listener = Listener(address, authkey=b'secret')  # authkey must match client
-
+    address = ('localhost', 6000)
+    listener = Listener(address, authkey=b'secret')
     node.get_logger().info("Listening for joint commands on port 6000...")
 
-    try:
-        while rclpy.ok():
+    # Handle clean shutdown with signal before ROS shutdown
+    def shutdown_handler(signum, frame):
+        print("\n[CTRL+C] Interrupt detected. Returning arm to home position...")
+
+        try:
+            node.process_arm_movement([0, 0, 0, 0])  # Move to home
+            print("Moved to home.")
+        except Exception as err:
+            print(f"Failed to move home: {err}")
+
+        print("Shutting down ROS node. Goodbye.\n")
+        node.destroy_node()
+        rclpy.shutdown()
+        exit(0)
+
+    # Register the signal handler
+    signal.signal(signal.SIGINT, shutdown_handler)
+
+    while rclpy.ok():
+        try:
             conn = listener.accept()
             node.get_logger().info("Client connected.")
 
@@ -208,14 +225,11 @@ def main(args=None):
                 conn.send(f"Error: {e}")
             finally:
                 conn.close()
-    except KeyboardInterrupt:
-        pass
-    finally:
-        print("Going Home. Goodbye.")
-        node.process_arm_movement([0,0,0,0])
-        print("\n\n")
-        node.destroy_node()
-        rclpy.shutdown()
+
+        except Exception as e:
+            print(f"Listener error: {e}")
+            break
+
 
 if __name__ == '__main__':
     main()

@@ -26,6 +26,6 @@ if __name__ == '__main__':
     send_joint_command([0, -90, 0, 0])
     print("\n\n")
 
-    print("To Home")
-    to_home()
-    print("\n\n")
+    # print("To Home")
+    # to_home()
+    # print("\n\n")
